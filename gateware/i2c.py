@@ -134,14 +134,16 @@ class I2CSlave(Module):
             ).Elif(bus.start,
                 NextValue(bitno, 0),
                 NextState("START")
-            ).Elif(bus.setup,
-                self.start.eq(1),
+            ).Elif(bus.sample,
                 If(shreg_i[0],
+                    self.start.eq(1),
                     NextState("READ-SHIFT"),
-                    NextValue(bus.sda_o, self.data_o[7]),
-                    # this is a bit ugly, maybe do it on sample?
-                    NextValue(shreg_o, self.data_o << 1)
-                ).Else(
+                    NextValue(bitno, 0),
+                    NextValue(shreg_o, self.data_o)
+                )
+            ).Elif(bus.setup,
+                If(~shreg_i[0],
+                    self.start.eq(1),
                     NextValue(bus.sda_o, 1),
                     NextState("WRITE-SHIFT")
                 )
@@ -155,13 +157,13 @@ class I2CSlave(Module):
                 NextValue(bitno, 0),
                 NextState("START")
             ).Elif(bus.setup,
-                NextValue(bitno, bitno + 1),
                 NextValue(bus.sda_o, shreg_o[7]),
-                NextValue(shreg_o, shreg_o  << 1),
+                NextValue(shreg_o, shreg_o << 1),
                 If(bitno == 7,
                     NextValue(bus.sda_o, 1),
                     NextState("READ-ACK")
-                )
+                ),
+                NextValue(bitno, bitno + 1),
             )
         )
         self.fsm.act("READ-ACK",
@@ -297,7 +299,6 @@ class I2CSlaveTestbench(Module):
         yield self.scl_o.eq(0)
         yield from self.half_period()
         print((yield from self.dut_state()))
-        print("read_bit")
         yield self.scl_o.eq(1)
         bit = (yield self.sda_i)
         print(bit)
@@ -306,9 +307,15 @@ class I2CSlaveTestbench(Module):
 
     def read_octet(self):
         octet = 0
-        for bit in range(8):
+        for bit in range(7):
             octet = (octet << 1) | (yield from self.read_bit())
+        yield self.scl_o.eq(0)
+        yield from self.half_period()
         print((yield from self.dut_state()))
+        yield self.scl_o.eq(1)
+        bit = (yield self.sda_i)
+        print(bit)
+        octet = (octet << 1) | bit
         return octet
 
 
@@ -348,11 +355,13 @@ class I2CSlaveTestCase(unittest.TestCase):
     def test_addr_r_ack(self, tb):
         yield from tb.start()
         yield from tb.write_octet(0b01010001)
-        self.assertEqual((yield from tb.read_bit()), 0)
-        self.assertEqual((yield from tb.dut_state()), "ADDR-ACK")
         yield tb.scl_o.eq(0)
+        yield from tb.half_period()
+        yield tb.scl_o.eq(1)
+        self.assertEqual((yield tb.sda_i), 0)
+        self.assertEqual((yield from tb.dut_state()), "ADDR-ACK")
         self.assertTrue((yield from tb.wait_for(lambda: (yield tb.dut.start))))
-        yield
+        yield from tb.half_period()
         self.assertEqual((yield from tb.dut_state()), "READ-SHIFT")
 
     @simulation_test
@@ -436,18 +445,114 @@ class I2CSlaveTestCase(unittest.TestCase):
 
     @simulation_test
     def test_read_nack(self, tb):
-        yield tb.dut.data_o.eq(0b10100101)
+        yield tb.dut.data_o.eq(0b10101010)
         yield from tb.start()
         yield from tb.write_octet(0b01010001)
-        self.assertEqual((yield from tb.read_bit()), 0) # ACK
-        self.assertEqual((yield from tb.dut_state()), "ADDR-ACK")
-        self.assertEqual((yield from tb.read_octet()), 0b10100101)
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
         yield tb.scl_o.eq(0)
         yield from tb.half_period()
-        self.assertEqual((yield from tb.dut_state()), "READ-ACK")
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        self.assertEqual((yield from tb.dut_state()), "ADDR-ACK")
+        yield tb.scl_o.eq(1)
+        self.assertEqual((yield tb.sda_i), 0)
+        #self.assertTrue((yield from tb.wait_for(lambda: (yield tb.dut.start))))
+        self.assertTrue((yield from tb.dut_state()), "READ-SHIFT")
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(0)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
         yield tb.scl_o.eq(1)
         yield from tb.half_period()
-        self.assertEqual((yield from tb.dut_state()), "IDLE")
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(0)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(1)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(0)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(1)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(0)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(1)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(0)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(1)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(0)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(1)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(0)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(1)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(0)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        yield tb.scl_o.eq(1)
+        yield from tb.half_period()
+        print((yield from tb.dut_state()))
+        print((yield tb.scl_o))
+        print((yield tb.sda_i))
+        self.assertTrue(False)
+        #self.assertEqual((yield from tb.read_octet()), 0b10100100)
+        #self.assertEqual((yield from tb.dut_state()), "READ-ACK")
+        #yield tb.scl_o.eq(0)
+        #yield from tb.half_period()
+        #yield tb.scl_o.eq(1)
+        #yield from tb.half_period()
+        #self.assertEqual((yield from tb.dut_state()), "IDLE")
 
     @simulation_test
     def test_read_multi(self, tb):
